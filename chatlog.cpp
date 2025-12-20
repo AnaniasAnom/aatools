@@ -26,11 +26,13 @@ void warn(const std::string& s) {
   std::cerr << s << "\n";
 }
 
-static std::string date_string(std::chrono::system_clock::time_point tp) {
+static std::string date_string(std::chrono::time_point<std::chrono::system_clock> tp) {
   return std::format("{:%Y%m%d}", tp);
 }
 
 std::regex days_regex{"^-[0-9]{1,5}$"};
+std::regex mmdd_regex{"^[0-9]{4}$"};
+std::regex ymd_regex{"^20[0-9]{6}$"};
 
 class cache {
 public:
@@ -163,7 +165,7 @@ private:
 };
 
 date_argument::date_argument(std::span<string>& args) {
-  auto today = std::chrono::system_clock::now();
+  auto today = std::chrono::time_point_cast<std::chrono::days>(std::chrono::system_clock::now());
   
   if (!args.empty()) {
     const std::string& a = args.front();
@@ -175,6 +177,15 @@ date_argument::date_argument(std::span<string>& args) {
     if (std::regex_match(a, days_regex)) {
       auto offset = std::stoi(a);
       value = date_string(today + std::chrono::days(offset));
+      args = args.subspan(1); return;
+    }
+    if (std::regex_match(a, mmdd_regex)) {
+      std::chrono::year_month_day dt{today};
+      value = std::format("{:04d}{}", static_cast<int>(dt.year()), a);
+      args = args.subspan(1); return;
+    }
+    if (std::regex_match(a, ymd_regex)) {
+      value = a;
       args = args.subspan(1); return;
     }
   }
