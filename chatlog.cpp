@@ -31,8 +31,8 @@ std::regex days_regex{"^-[0-9]{1,5}$"};
 class cache {
 public:
   cache();
-  string get_girl();
-  string set_girl(string name);
+  string get_subject();
+  string set_subject(string name);
 private:
   path file_path;
   char buffer[40];
@@ -58,7 +58,7 @@ cache::cache() {
   file_path = path{".chatlog"};
 }
 
-string cache::get_girl() {
+string cache::get_subject() {
   std::ifstream file(file_path);
   if (file.good()) {
     file.read(buffer, sizeof(buffer));
@@ -71,7 +71,7 @@ string cache::get_girl() {
   return string{"NONE"};
 }
 
-string cache::set_girl(string name) {
+string cache::set_subject(string name) {
   if (name.size() > sizeof(buffer)) {
     warn("name is too long");
   }
@@ -89,9 +89,9 @@ string cache::set_girl(string name) {
   return name;
 }
 
-static path full_path(string girl, string datestr) {
+static path full_path(string subject, string datestr) {
   path p{base_dir() / "chatlogs"};
-  return p / girl / datestr;
+  return p / subject / datestr;
 }
 
 class match_name {
@@ -131,6 +131,24 @@ private:
 };
 
 
+class option_argument {
+public:
+  option_argument(std::span<string>& args);
+  bool matches(const std::string& s) const { return s == value; };
+private:
+  string value;
+};
+
+option_argument::option_argument(std::span<string>& args) {
+  if (!args.empty()) {
+    const auto& a = args.front();
+    if (a == "create") {
+      value = a;
+      args = args.subspan(1);
+    }
+  }
+}
+
 class date_argument {
 public:
   date_argument(std::span<string>& args);
@@ -160,8 +178,8 @@ date_argument::date_argument(std::span<string>& args) {
 
 std::ostream& operator << (std::ostream& str, const date_argument& x) { return str << static_cast<string>(x); }
 
-int open_file(string girl, string datestr) {
-  auto p = full_path(girl, datestr);
+int open_file(string subject, string datestr) {
+  auto p = full_path(subject, datestr);
   if (std::filesystem::is_regular_file(p)) {
     std::cout << "opening " << p.string() << "\n";
   }
@@ -180,21 +198,46 @@ int open_file(string girl, string datestr) {
 int main(int argc, char* argv[]) {
   std::transform(argv+1, argv+argc, std::back_inserter(arguments), [](const char* cp){ return std::string(cp); });
 
-  std::span<string> parsing{arguments};
-  date_argument for_date{parsing};
-
-  std::ranges::for_each(parsing, [](const auto& a) { std::cout << a << "\n"; });
-
   cache saved{};
+  std::span<string> parsing{arguments};
+
+  option_argument option{parsing};
+  if (option.matches("create")) {
+    if (parsing.empty()) {
+      warn("Need an explicit name to create\n");
+      return 1;
+    }
+    auto name = parsing.front();
+    if ((name.size() > 40) ||
+        (name.find(' ') != string::npos) ||
+        name.empty()) {
+      warn("Invalid name\n");
+      return 1;
+    }
+    path p{base_dir() / "chatlogs" / name};
+    if (std::filesystem::exists(p)) {
+      warn("Already exists");
+    } else {
+      int status = 0;
+      if (!std::filesystem::create_directory(p)) {
+        warn("Failed");
+        status = 1;
+      }
+      saved.set_subject(name);
+      return status;
+    }
+  }
+
+  date_argument for_date{parsing};
   if (parsing.empty()) {
-    return open_file(saved.get_girl(), for_date);
+    return open_file(saved.get_subject(), for_date);
   } else {
-    auto girl = parsing.front();
+    auto subject = parsing.front();
     parsing = parsing.subspan(1);
 
-    match_name matched(girl);
+    match_name matched(subject);
     if (matched.matched()) {
-      saved.set_girl(matched.match());
+      saved.set_subject(matched.match());
       return open_file(matched.match(), for_date);
     }
     else if (matched.any()) {
@@ -209,16 +252,16 @@ int main(int argc, char* argv[]) {
         if (!input.empty()) {
           size_t num = std::stoi(input);
           if ((num >= 1) && (num <= matched.count())) {
-            auto girl = matched.get(num - 1);
-            saved.set_girl(girl);
-            return open_file(girl, for_date);
+            auto subject = matched.get(num - 1);
+            saved.set_subject(subject);
+            return open_file(subject, for_date);
           }
           break;
         }
       }
       warn("No input selected\n");
     }
-    else warn("No matching girl\n");
+    else warn("No matching subject\n");
   }
 
   return status;
