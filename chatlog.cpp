@@ -142,6 +142,7 @@ class option_argument {
 public:
   option_argument(std::span<string>& args);
   bool matches(const std::string& s) const { return s == value; };
+  operator bool() const { return !value.empty(); }
 private:
   string value;
 };
@@ -153,18 +154,24 @@ option_argument::option_argument(std::span<string>& args) {
       value = a;
       args = args.subspan(1);
     }
+    if (a == "ls") {
+      value = a;
+      args = args.subspan(1);
+    }
   }
 }
 
 class date_argument {
 public:
   date_argument(std::span<string>& args);
-  operator string() const { return value; };
+  operator string() const { return value; }
+  bool was_set() const { return !defaulted; }
 private:
   string value;
+  bool defaulted;
 };
 
-date_argument::date_argument(std::span<string>& args) {
+date_argument::date_argument(std::span<string>& args) : defaulted{false} {
   auto today = std::chrono::time_point_cast<std::chrono::days>(std::chrono::system_clock::now());
   
   if (!args.empty()) {
@@ -189,6 +196,7 @@ date_argument::date_argument(std::span<string>& args) {
       args = args.subspan(1); return;
     }
   }
+  defaulted = true;
   value = date_string(today);
 }
 
@@ -211,36 +219,64 @@ int open_file(string subject, string datestr) {
   return 0;
 }
 
+void list_dates(string subject) {
+  path data_path{base_dir() / datadir / subject};
+  assert(std::filesystem::is_directory(data_path));
+  std::vector<string> dates;
+  std::vector<string> others;
+
+  for (std::filesystem::directory_iterator dir{data_path};
+         dir != std::filesystem::directory_iterator{};
+       ++dir) {
+    auto fn = dir->path().filename().string();
+    if (std::regex_match(fn, ymd_regex)) {
+      dates.push_back(fn);
+    }
+    else if (!fn.starts_with(".")) {
+      others.push_back(fn);
+    }
+  }
+  std::ranges::sort(dates);
+  for (const auto& d : dates) std::cout << d << "\n";
+  for (const auto& d : others) std::cout << d << "\n";
+}    
+
 int main(int argc, char* argv[]) {
   std::transform(argv+1, argv+argc, std::back_inserter(arguments), [](const char* cp){ return std::string(cp); });
 
   cache saved{};
   std::span<string> parsing{arguments};
-
-  option_argument option{parsing};
-  if (option.matches("create")) {
-    if (parsing.empty()) {
-      warn("Need an explicit name to create\n");
-      return 1;
-    }
-    auto name = parsing.front();
-    if ((name.size() > 40) ||
-        (name.find(' ') != string::npos) ||
-        name.empty()) {
-      warn("Invalid name\n");
-      return 1;
-    }
-    path p{base_dir() / datadir / name};
-    if (std::filesystem::exists(p)) {
-      warn("Already exists");
-    } else {
-      int status = 0;
-      if (!std::filesystem::create_directory(p)) {
-        warn("Failed");
-        status = 1;
+  bool opt_list_dates{false};
+  for (; option_argument option{parsing} ;) {
+    if (option.matches("create")) {
+      if (parsing.empty()) {
+        warn("Need an explicit name to create\n");
+        return 1;
       }
-      saved.set_subject(name);
-      return status;
+      auto name = parsing.front();
+      if ((name.size() > 40) ||
+          (name.find(' ') != string::npos) ||
+          name.empty()) {
+        warn("Invalid name\n");
+        return 1;
+      }
+      path p{base_dir() / datadir / name};
+      if (std::filesystem::exists(p)) {
+        warn("Already exists");
+      } else {
+        int status = 0;
+        if (!std::filesystem::create_directory(p)) {
+          warn("Failed");
+          status = 1;
+        }
+        saved.set_subject(name);
+        return status;
+      }
+    }
+
+    if (option.matches("ls")) {
+      // list dates for the given subject
+      opt_list_dates = true;
     }
   }
 
@@ -254,6 +290,10 @@ int main(int argc, char* argv[]) {
     match_name matched(subject);
     if (matched.matched()) {
       saved.set_subject(matched.match());
+      if (opt_list_dates) {
+        list_dates(matched.match());
+        if (!for_date.was_set()) return 0;
+      }
       return open_file(matched.match(), for_date);
     }
     else if (matched.any()) {
