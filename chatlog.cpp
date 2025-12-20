@@ -14,6 +14,10 @@
 using std::string;
 using std::filesystem::path;
 
+const std::string datadir = "chatlogs";
+const std::string appname = "chatlog";
+const std::string editor = "mousepad";
+
 std::vector<string> arguments;
 int status = 0;
 
@@ -51,11 +55,12 @@ cache::cache() {
     path dir(home);
     dir /= ".cache";
     if (std::filesystem::is_directory(dir)) {
-      file_path = dir / "chatlog";
+      file_path = dir / appname;
       return;
     }
   }
-  file_path = path{".chatlog"};
+  auto dotfile = std::string{"."} + appname;
+  file_path = path{dotfile};
 }
 
 string cache::get_subject() {
@@ -90,14 +95,14 @@ string cache::set_subject(string name) {
 }
 
 static path full_path(string subject, string datestr) {
-  path p{base_dir() / "chatlogs"};
+  path p{base_dir() / datadir};
   return p / subject / datestr;
 }
 
 class match_name {
 public:
   match_name(const string& prefix) {
-    path chat_path{base_dir() / "chatlogs"};
+    path chat_path{base_dir() / datadir};
     for (std::filesystem::directory_iterator dir{chat_path};
          dir != std::filesystem::directory_iterator{};
          ++dir) {
@@ -191,7 +196,7 @@ int open_file(string subject, string datestr) {
     return 1;
   }
   if (fork() == 0)
-    execl("/usr/bin/mousepad", "chatlog", p.string().c_str(), nullptr);
+    execl("/usr/bin/mousepad", appname.c_str(), p.string().c_str(), nullptr);
   return 0;
 }
 
@@ -214,7 +219,7 @@ int main(int argc, char* argv[]) {
       warn("Invalid name\n");
       return 1;
     }
-    path p{base_dir() / "chatlogs" / name};
+    path p{base_dir() / datadir / name};
     if (std::filesystem::exists(p)) {
       warn("Already exists");
     } else {
