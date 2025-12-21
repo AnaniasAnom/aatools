@@ -20,3 +20,5 @@ You can pass the first few letters and it will open it, or give you a menu if th
 chatlog create will create a directory for the subject
 
 chatlog ls subject will list all the dated files existing for the subject
+
+There is support for shell completion: in bash, "complete -C 'chatlog -complete' chatlog"

@@ -44,6 +44,9 @@ private:
   char buffer[40];
 };
 
+// global recently-used cache
+cache saved;
+
 static path base_dir() {
   auto home = std::getenv("HOME");
   if (home)
@@ -150,11 +153,9 @@ private:
 option_argument::option_argument(std::span<string>& args) {
   if (!args.empty()) {
     const auto& a = args.front();
-    if (a == "create") {
-      value = a;
-      args = args.subspan(1);
-    }
-    if (a == "ls") {
+    if ((a == "create") ||
+        (a == "ls") ||
+        (a == "-complete")) {
       value = a;
       args = args.subspan(1);
     }
@@ -241,48 +242,75 @@ void list_dates(string subject) {
   for (const auto& d : others) std::cout << d << "\n";
 }    
 
+int output_shell_completions(std::span<string> parsing) {
+  // do shell completion for a partial subject
+  if (parsing.size() > 1) {
+    auto subject = parsing[1];
+    match_name matched(subject);
+    for (auto g : matched) {
+      std::cout << g << "\n";
+    }
+    return 0;
+  } else return 1;
+}
+
+int create_subject(std::span<string> parsing) {
+  if (parsing.empty()) {
+    warn("Need an explicit name to create\n");
+    return 1;
+  }
+  auto name = parsing.front();
+  if ((name.size() > 40) ||
+      (name.find(' ') != string::npos) ||
+      name.empty()) {
+    warn("Invalid name\n");
+    return 1;
+  }
+  path p{base_dir() / datadir / name};
+  if (std::filesystem::exists(p)) {
+    warn("Already exists");
+    return 1;
+  } else {
+    int status = 0;
+    if (!std::filesystem::create_directory(p)) {
+      warn("Failed");
+      status = 1;
+    }
+    saved.set_subject(name);
+    return status;
+  }
+}
+
 int main(int argc, char* argv[]) {
   std::transform(argv+1, argv+argc, std::back_inserter(arguments), [](const char* cp){ return std::string(cp); });
 
-  cache saved{};
-  std::span<string> parsing{arguments};
-  bool opt_list_dates{false};
+  std::span<string> parsing(arguments.begin(), std::find(arguments.begin(), arguments.end(), "--"));
+
+  bool opt_list{false};
   for (; option_argument option{parsing} ;) {
     if (option.matches("create")) {
-      if (parsing.empty()) {
-        warn("Need an explicit name to create\n");
-        return 1;
-      }
-      auto name = parsing.front();
-      if ((name.size() > 40) ||
-          (name.find(' ') != string::npos) ||
-          name.empty()) {
-        warn("Invalid name\n");
-        return 1;
-      }
-      path p{base_dir() / datadir / name};
-      if (std::filesystem::exists(p)) {
-        warn("Already exists");
-      } else {
-        int status = 0;
-        if (!std::filesystem::create_directory(p)) {
-          warn("Failed");
-          status = 1;
-        }
-        saved.set_subject(name);
-        return status;
-      }
+      return create_subject(parsing);
     }
 
     if (option.matches("ls")) {
       // list dates for the given subject
-      opt_list_dates = true;
+      opt_list = true;
+    }
+
+    if (option.matches("-complete")) {
+      return output_shell_completions(parsing);
     }
   }
 
   date_argument for_date{parsing};
   if (parsing.empty()) {
-    return open_file(saved.get_subject(), for_date);
+    if (opt_list) {
+      // write all the subjects out
+      match_name all_subjects(string{});
+      for (const auto& s : all_subjects)
+        std::cout << s << "\n";
+    }
+    else return open_file(saved.get_subject(), for_date);
   } else {
     auto subject = parsing.front();
     parsing = parsing.subspan(1);
@@ -290,7 +318,7 @@ int main(int argc, char* argv[]) {
     match_name matched(subject);
     if (matched.matched()) {
       saved.set_subject(matched.match());
-      if (opt_list_dates) {
+      if (opt_list) {
         list_dates(matched.match());
         if (!for_date.was_set()) return 0;
       }
