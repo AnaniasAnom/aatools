@@ -18,7 +18,6 @@ const string datadir = "chatlogs";
 const string appname = "chatlog";
 const string editor = "/usr/bin/mousepad";
 
-std::vector<string> arguments;
 int status = 0;
 
 void warn(const string& s) {
@@ -282,8 +281,8 @@ int create_subject(std::span<string> parsing) {
 }
 
 int main(int argc, char* argv[]) {
+  std::vector<string> arguments;
   std::transform(argv+1, argv+argc, std::back_inserter(arguments), [](const char* cp){ return string(cp); });
-
   std::span<string> parsing(arguments);
 
   bool opt_list{false};
@@ -292,13 +291,13 @@ int main(int argc, char* argv[]) {
       return create_subject(parsing);
     }
 
+    if (option.matches("-complete")) {
+      return output_shell_completions(parsing);
+    }
+
     if (option.matches("ls")) {
       // list dates for the given subject
       opt_list = true;
-    }
-
-    if (option.matches("-complete")) {
-      return output_shell_completions(parsing);
     }
   }
 
