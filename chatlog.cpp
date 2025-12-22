@@ -14,19 +14,19 @@
 using std::string;
 using std::filesystem::path;
 
-const std::string datadir = "chatlogs";
-const std::string appname = "chatlog";
-const std::string editor = "mousepad";
+const string datadir = "chatlogs";
+const string appname = "chatlog";
+const string editor = "/usr/bin/mousepad";
 
 std::vector<string> arguments;
 int status = 0;
 
-void warn(const std::string& s) {
+void warn(const string& s) {
   status = 1;
   std::cerr << s << "\n";
 }
 
-static std::string date_string(std::chrono::time_point<std::chrono::system_clock> tp) {
+static string date_string(std::chrono::time_point<std::chrono::system_clock> tp) {
   return std::format("{:%Y%m%d}", tp);
 }
 
@@ -64,7 +64,7 @@ cache::cache() {
       return;
     }
   }
-  auto dotfile = std::string{"."} + appname;
+  auto dotfile = string{"."} + appname;
   file_path = path{dotfile};
 }
 
@@ -144,7 +144,7 @@ private:
 class option_argument {
 public:
   option_argument(std::span<string>& args);
-  bool matches(const std::string& s) const { return s == value; };
+  bool matches(const string& s) const { return s == value; };
   operator bool() const { return !value.empty(); }
 private:
   string value;
@@ -176,7 +176,7 @@ date_argument::date_argument(std::span<string>& args) : defaulted{false} {
   auto today = std::chrono::time_point_cast<std::chrono::days>(std::chrono::system_clock::now());
   
   if (!args.empty()) {
-    const std::string& a = args.front();
+    const string& a = args.front();
     if (a == "yesterday") {
       auto dt = today - std::chrono::days(1);
       value = date_string(dt);
@@ -216,7 +216,7 @@ int open_file(string subject, string datestr) {
     return 1;
   }
   if (fork() == 0)
-    execl("/usr/bin/mousepad", appname.c_str(), p.string().c_str(), nullptr);
+    execl(editor.c_str(), appname.c_str(), p.string().c_str(), nullptr);
   return 0;
 }
 
@@ -282,9 +282,9 @@ int create_subject(std::span<string> parsing) {
 }
 
 int main(int argc, char* argv[]) {
-  std::transform(argv+1, argv+argc, std::back_inserter(arguments), [](const char* cp){ return std::string(cp); });
+  std::transform(argv+1, argv+argc, std::back_inserter(arguments), [](const char* cp){ return string(cp); });
 
-  std::span<string> parsing(arguments.begin(), std::find(arguments.begin(), arguments.end(), "--"));
+  std::span<string> parsing(arguments);
 
   bool opt_list{false};
   for (; option_argument option{parsing} ;) {
