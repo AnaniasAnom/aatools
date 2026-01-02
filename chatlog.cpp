@@ -274,8 +274,12 @@ int create_subject(std::span<string> parsing) {
     if (!std::filesystem::create_directory(p)) {
       warn("Failed");
       status = 1;
+    } else {
+      auto today = std::chrono::time_point_cast<std::chrono::days>(std::chrono::system_clock::now());
+      status = open_file(name, date_string(today));
     }
     saved.set_subject(name);
+
     return status;
   }
 }
@@ -302,6 +306,7 @@ int main(int argc, char* argv[]) {
   }
 
   date_argument for_date{parsing};
+
   if (parsing.empty()) {
     if (opt_list) {
       // write all the subjects out
@@ -324,6 +329,7 @@ int main(int argc, char* argv[]) {
       return open_file(matched.match(), for_date);
     }
     else if (matched.any()) {
+      // write out the possible matches, and prompt for a choice
       size_t label = 1;
       for (auto g : matched) {
         std::cout << label++ << " : " << g << "\n";
