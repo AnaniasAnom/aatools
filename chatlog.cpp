@@ -154,7 +154,8 @@ option_argument::option_argument(std::span<string>& args) {
     const auto& a = args.front();
     if ((a == "create") ||
         (a == "ls") ||
-        (a == "-complete")) {
+        (a == "-complete") ||
+        (a == "latest")) {
       value = a;
       args = args.subspan(1);
     }
@@ -219,7 +220,7 @@ int open_file(string subject, string datestr) {
   return 0;
 }
 
-void list_dates(string subject) {
+std::tuple<std::vector<string>, std::vector<string>> read_dates(string subject) {
   path data_path{base_dir() / datadir / subject};
   assert(std::filesystem::is_directory(data_path));
   std::vector<string> dates;
@@ -237,9 +238,20 @@ void list_dates(string subject) {
     }
   }
   std::ranges::sort(dates);
+  return std::make_tuple<>(dates, others);
+}
+
+void list_dates(string subject) {
+  auto [ dates, others ] = read_dates(subject);
   for (const auto& d : dates) std::cout << d << "\n";
   for (const auto& d : others) std::cout << d << "\n";
-}    
+}
+
+string latest_date(string subject) {
+  auto [ dates, _ ] = read_dates(subject);
+  if (dates.empty()) return "";
+  else return dates.back();
+}
 
 int output_shell_completions(std::span<string> parsing) {
   // do shell completion for a partial subject
@@ -290,6 +302,7 @@ int main(int argc, char* argv[]) {
   std::span<string> parsing(arguments);
 
   bool opt_list{false};
+  bool opt_latest{false};
   for (; option_argument option{parsing} ;) {
     if (option.matches("create")) {
       return create_subject(parsing);
@@ -303,6 +316,8 @@ int main(int argc, char* argv[]) {
       // list dates for the given subject
       opt_list = true;
     }
+
+    if (option.matches("latest")) opt_latest = true;
   }
 
   date_argument for_date{parsing};
@@ -325,6 +340,11 @@ int main(int argc, char* argv[]) {
       if (opt_list) {
         list_dates(matched.match());
         if (!for_date.was_set()) return 0;
+      }
+      else if (opt_latest) {
+        auto latest = latest_date(matched.match());
+        if (latest.empty()) return 1;
+        return open_file(matched.match(), latest);
       }
       return open_file(matched.match(), for_date);
     }
