@@ -17,6 +17,7 @@ using std::filesystem::path;
 const string datadir = "chatlogs";
 const string appname = "chatlog";
 const string editor = "/usr/bin/mousepad";
+const string meta_filename{".usernames"};
 
 int status = 0;
 
@@ -103,20 +104,48 @@ static path full_path(string subject, string datestr) {
   return p / subject / datestr;
 }
 
+std::regex entry_re{"^\\s*([a-z]+)\\s*:\\s*([a-zA-Z0-9_-]+)\\s*$"};
+string read_username(path dir, string mode) {
+  auto meta = dir / meta_filename;
+
+  if (std::filesystem::is_regular_file(meta)) {
+    std::ifstream s(meta);
+    string entry;
+    while (std::getline(s, entry)) {
+      if (entry.length() >= 3) {
+        std::smatch parsed;
+        if (std::regex_match(entry, parsed, entry_re)) {
+          if (parsed[1] == mode)
+            return parsed[2];
+        }
+        else {
+          std::cerr << "invalid metadata in " << meta << "\n";
+        }
+      }
+    }
+  }
+  return dir.filename().string();
+}
+
 class match_name {
 public:
-  match_name(const string& prefix) {
+  match_name(const string& prefix, const string& mode = "") {
     path chat_path{base_dir() / datadir};
     for (std::filesystem::directory_iterator dir{chat_path};
          dir != std::filesystem::directory_iterator{};
          ++dir) {
-      auto fn = dir->path().filename().string();
-      if (fn == prefix) {
-        found = fn;
+      auto name = dir->path().filename().string();
+      if (!mode.empty()) {
+        name = read_username(dir->path(), mode);
+      }
+
+      if (name == prefix) {
+        possibles.push_back(name);
+        found = name;
         break;
       } else {
-        if (fn.starts_with(prefix)) {
-          possibles.push_back(fn);
+        if (name.starts_with(prefix)) {
+          possibles.push_back(name);
         }
       }
     }
@@ -138,7 +167,6 @@ private:
   string found;
   std::vector<string> possibles;
 };
-
 
 class option_argument {
 public:
@@ -257,7 +285,11 @@ int output_shell_completions(std::span<string> parsing) {
   // do shell completion for a partial subject
   if (parsing.size() > 1) {
     auto subject = parsing[1];
-    match_name matched(subject);
+    string mode;
+    if ((parsing[0] == "waitfor") && (parsing.size() > 2))
+      mode = parsing[2];
+        
+    match_name matched(subject, mode);
     for (auto g : matched) {
       std::cout << g << "\n";
     }
