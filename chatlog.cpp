@@ -16,8 +16,24 @@ using std::filesystem::path;
 
 const string datadir = "chatlogs";
 const string appname = "chatlog";
-const string editor = "/usr/bin/mousepad";
 const string meta_filename{".usernames"};
+
+enum class view_mode {
+  edit, view
+};
+
+struct editor {
+  void operator ()(string file) const {
+    if (fork() == 0)
+      execl("/usr/bin/mousepad", appname.c_str(), file.c_str(), nullptr);
+  }
+};
+
+struct lister {
+  void operator ()(string file) const {
+    execl("/usr/bin/less", appname.c_str(), file.c_str(), nullptr);
+  }
+};
 
 int status = 0;
 
@@ -183,6 +199,7 @@ option_argument::option_argument(std::span<string>& args) {
     if ((a == "create") ||
         (a == "ls") ||
         (a == "-complete") ||
+        (a == "-cat") ||
         (a == "latest")) {
       value = a;
       args = args.subspan(1);
@@ -231,7 +248,7 @@ date_argument::date_argument(std::span<string>& args) : defaulted{false} {
 
 std::ostream& operator << (std::ostream& str, const date_argument& x) { return str << static_cast<string>(x); }
 
-int open_file(string subject, string datestr) {
+int open_file(string subject, string datestr, view_mode m) {
   auto p = full_path(subject, datestr);
   if (std::filesystem::is_regular_file(p)) {
     std::cout << "opening " << p.string() << "\n";
@@ -243,8 +260,13 @@ int open_file(string subject, string datestr) {
     warn("File is not a regular file\n");
     return 1;
   }
-  if (fork() == 0)
-    execl(editor.c_str(), appname.c_str(), p.string().c_str(), nullptr);
+  switch(m) {
+  case view_mode::edit:
+    editor{}(p.string());
+    break;
+  case view_mode::view:
+    lister{}(p.string());
+  }
   return 0;
 }
 
@@ -320,7 +342,7 @@ int create_subject(std::span<string> parsing) {
       status = 1;
     } else {
       auto today = std::chrono::time_point_cast<std::chrono::days>(std::chrono::system_clock::now());
-      status = open_file(name, date_string(today));
+      status = open_file(name, date_string(today), view_mode::edit);
     }
     saved.set_subject(name);
 
@@ -335,6 +357,8 @@ int main(int argc, char* argv[]) {
 
   bool opt_list{false};
   bool opt_latest{false};
+  view_mode opt_view_mode{view_mode::edit};
+
   for (; option_argument option{parsing} ;) {
     if (option.matches("create")) {
       return create_subject(parsing);
@@ -342,6 +366,10 @@ int main(int argc, char* argv[]) {
 
     if (option.matches("-complete")) {
       return output_shell_completions(parsing);
+    }
+
+    if (option.matches("-cat")) {
+      opt_view_mode = view_mode::view;
     }
 
     if (option.matches("ls")) {
@@ -361,7 +389,7 @@ int main(int argc, char* argv[]) {
       for (const auto& s : all_subjects)
         std::cout << s << "\n";
     }
-    else return open_file(saved.get_subject(), for_date);
+    else return open_file(saved.get_subject(), for_date, opt_view_mode);
   } else {
     auto subject = parsing.front();
     parsing = parsing.subspan(1);
@@ -376,9 +404,9 @@ int main(int argc, char* argv[]) {
       else if (opt_latest) {
         auto latest = latest_date(matched.match());
         if (latest.empty()) return 1;
-        return open_file(matched.match(), latest);
+        return open_file(matched.match(), latest, opt_view_mode);
       }
-      return open_file(matched.match(), for_date);
+      return open_file(matched.match(), for_date, opt_view_mode);
     }
     else if (matched.any()) {
       // write out the possible matches, and prompt for a choice
@@ -395,7 +423,7 @@ int main(int argc, char* argv[]) {
           if ((num >= 1) && (num <= matched.count())) {
             auto subject = matched.get(num - 1);
             saved.set_subject(subject);
-            return open_file(subject, for_date);
+            return open_file(subject, for_date, opt_view_mode);
           }
           break;
         }
